@@ -22,9 +22,9 @@ else:
     sold_coins = {}
 
 if os.path.isfile('order.json'):
-    order = load_order('order.json')
+    order_made = load_order('order.json')
 else:
-    order = {}
+    order_made = {}
 
 if os.path.isfile('new_listing.json'):
     announcement_coin = load_order('new_listing.json')
@@ -57,50 +57,45 @@ def main():
 
             # check if the order file exists and load the current orders
             # basically the sell block and update TP and SL logic
-            if len(order) > 0:
+            if len(order_made) > 0:
 
-                for coin in list(order):
+                for coin in list(order_made):
 
                     # store some necesarry trade info for a sell
-                    stored_price = float(order[coin]['price'])
-                    coin_tp = order[coin]['tp']
-                    coin_sl = order[coin]['sl']
-                    volume = order[coin]['volume']
-                    symbol = order[coin]['symbol']
+                    stored_price = float(order_made[coin]['price'])
+                    coin_tp = order_made[coin]['tp']
+                    coin_sl = order_made[coin]['sl']
+                    volume = order_made[coin]['volume']
+                    symbol = order_made[coin]['symbol']
 
                     last_price = get_last_price(symbol, pairing)
-                    print(f'{last_price=}')
-                    print(f'{stored_price - (stored_price*sl /100)=}')
+                    print("last_price: {}, stored_price: {}".format(last_price, stored_price))
                     # update stop loss and take profit values if threshold is reached
-                    if float(last_price) > stored_price + (stored_price*coin_tp /100) and enable_tsl:
-                        # increase as absolute value for TP
-                        new_tp = float(last_price) - (float(last_price)*ttp /100)
-                        # convert back into % difference from when the coin was bought
-                        new_tp = float( (new_tp - stored_price) / stored_price*100)
+                    if float(last_price) > stored_price and enable_tsl:
 
                         # same deal as above, only applied to trailing SL
-                        new_sl = float(last_price) + (float(last_price)*tsl /100)
-                        new_sl = float((new_sl - stored_price) / stored_price*100)
+                        new_sl = float(last_price) - (float(last_price) * (float(tsl)/100))
 
                         # new values to be added to the json file
-                        order[coin]['tp'] = new_tp
-                        order[coin]['sl'] = new_sl
-                        store_order('order.json', order)
+                        order_made[coin]['price'] = last_price
+                        order_made[coin]['sl'] = new_sl
+                        store_order('order.json', order_made)
+                        print("new_sl: {}".format(new_sl))
 
-                        print(f'updated tp: {round(new_tp, 3)} and sl: {round(new_sl, 3)}')
 
                     # close trade if tsl is reached or trail option is not enabled
                     elif float(last_price) < stored_price - (stored_price*sl /100) or float(last_price) > stored_price + (stored_price*coin_tp /100) and not enable_tsl:
                         try:
                             # sell for real if test mode is set to false
                             if not test_mode:
-                                sell = place_order(symbol, pairing, coin['volume']*99.5/100, 'sell', last_price)
+                                print("TRYING TO SELL for usdt:{}".format((float(volume)*(99.5/100)) * float(last_price)))
+                                sell = place_order(symbol, pairing, (float(volume)*(99.5/100)) * float(last_price), 'sell', last_price)
 
-                            print(f"sold {coin} with {(float(last_price) - stored_price) / float(stored_price)*100}% PNL")
+                            print(f"[BUY-Thread]sold {coin} with {(float(last_price) - stored_price) / float(stored_price)*100}% PNL")
 
                             # remove order from json file
-                            order.pop(coin)
-                            store_order('order.json', order)
+                            order_made.pop(coin)
+                            store_order('order.json', order_made)
 
                         except Exception as e:
                             print(e)
@@ -108,7 +103,24 @@ def main():
                         # store sold trades data
                         else:
                             if not test_mode:
-                                sold_coins[coin] = sell
+                                sold_coins[coin] = {
+                                            'symbol':coin,
+                                            'price':sell.price,
+                                            'volume':sell.amount,
+                                            'time':datetime.timestamp(datetime.now()),
+                                            'tp': tp,
+                                            'sl': sl,
+                                            'id': sell.id,
+                                            'text': sell.text,
+                                            'create_time': sell.create_time,
+                                            'update_time': sell.update_time,
+                                            'currency_pair': sell.currency_pair,
+                                            'status': sell.status,
+                                            'type': sell.type,
+                                            'account': sell.account,
+                                            'side': sell.side,
+                                            'iceberg': sell.iceberg
+                                }
                                 store_order('sold.json', sold_coins)
                             else:
                                 sold_coins[coin] = {
@@ -128,7 +140,7 @@ def main():
                                             'account': 'spot',
                                             'side': 'sell',
                                             'iceberg': '0',
-                                            'price': last_price }
+                                            'price': last_price}
 
                                 store_order('sold.json', sold_coins)
 
@@ -140,13 +152,13 @@ def main():
             else:
                 announcement_coin = False
 
-            if announcement_coin and announcement_coin not in order and announcement_coin not in sold_coins:
-                print(f'New annoucement detected: {announcement_coin}')
+            if announcement_coin and announcement_coin not in order_made and announcement_coin not in sold_coins:
+                print(f'[BUY-Thread]New announcement detected: {announcement_coin}')
                 price = get_last_price(announcement_coin, pairing)
                 try:
                     # Run a test trade if true
                     if config['TRADE_OPTIONS']['TEST']:
-                        order[announcement_coin] = {
+                        order_made[announcement_coin] = {
                                     'symbol':announcement_coin,
                                     'price':price,
                                     'volume':qty,
@@ -164,22 +176,40 @@ def main():
                                     'side': 'buy',
                                     'iceberg': '0'
                                     }
-                        print('PLACING TEST ORDER')
+                        print('[BUY-Thread]PLACING TEST ORDER')
                     # place a live order if False
                     else:
-                        order[announcement_coin] = place_order(announcement_coin, pairing, qty,'buy', price)
-                        order[announcement_coin]['tp'] = tp
-                        order[announcement_coin]['sl'] = sl
+                        print("[BUY-Thread]placing order")
+                        order_made[announcement_coin] = {}
+                        ORDER = place_order(announcement_coin, pairing, qty,'buy', float(price)* 1.1)
+                        order_made[announcement_coin] =order_made[announcement_coin] = {
+                                    'symbol':announcement_coin,
+                                    'price':ORDER.price,
+                                    'volume':ORDER.amount,
+                                    'time':datetime.timestamp(datetime.now()),
+                                    'tp': tp,
+                                    'sl': float(ORDER.price) - (float(ORDER.price) * (float(tsl)/100)),
+                                    'id': ORDER.id,
+                                    'text': ORDER.text,
+                                    'create_time': ORDER.create_time,
+                                    'update_time': ORDER.update_time,
+                                    'currency_pair': ORDER.currency_pair,
+                                    'status': ORDER.status,
+                                    'type': ORDER.type,
+                                    'account': ORDER.account,
+                                    'side': ORDER.side,
+                                    'iceberg': ORDER.iceberg
+                                    }
 
                 except Exception as e:
                     print(e)
 
                 else:
-                    print(f"Order created with {qty} on {announcement_coin}")
+                    print(f"[BUY-Thread]Order created with {qty} on {announcement_coin}")
 
-                    store_order('order.json', order)
+                    store_order('order.json', order_made)
             else:
-                print("[{}]No coins announced, or coin has already been bought/sold. Checking more frequently in case TP and SL need updating. You can comment me out, I live on line 176 in main.py".format(datetime.now()))
+                print("[BUY-Thread][{}]No coins announced, or coin has already been bought/sold. Checking more frequently in case TP and SL need updating. You can comment me out, I live on line 176 in main.py".format(datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
 
             time.sleep(3)
         #except Exception as e:
