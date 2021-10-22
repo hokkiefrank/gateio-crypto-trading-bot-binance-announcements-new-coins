@@ -63,19 +63,19 @@ def main():
 
                     # store some necesarry trade info for a sell
                     stored_price = float(order_made[coin]['price'])
+                    actual_buyprice = float(order_made[coin]['actual_buyprice'])
                     coin_tp = order_made[coin]['tp']
-                    coin_sl = order_made[coin]['sl']
+                    coin_sl = float(order_made[coin]['sl'])
                     volume = order_made[coin]['volume']
                     symbol = order_made[coin]['symbol']
 
                     last_price = get_last_price(symbol, pairing)
-                    print("last_price: {}, stored_price: {}".format(last_price, stored_price))
+                    print("[BUY-Thread]last_price: {}, stored_price: {}".format(last_price, stored_price))
                     # update stop loss and take profit values if threshold is reached
                     if float(last_price) > stored_price and enable_tsl:
 
                         # same deal as above, only applied to trailing SL
                         new_sl = float(last_price) - (float(last_price) * (float(tsl)/100))
-
                         # new values to be added to the json file
                         order_made[coin]['price'] = last_price
                         order_made[coin]['sl'] = new_sl
@@ -84,14 +84,14 @@ def main():
 
 
                     # close trade if tsl is reached or trail option is not enabled
-                    elif float(last_price) < stored_price - (stored_price*sl /100) or float(last_price) > stored_price + (stored_price*coin_tp /100) and not enable_tsl:
+                    elif float(last_price) < coin_sl:
                         try:
                             # sell for real if test mode is set to false
                             if not test_mode:
                                 print("TRYING TO SELL for usdt:{}".format((float(volume)*(99.5/100)) * float(last_price)))
                                 sell = place_order(symbol, pairing, (float(volume)*(99.5/100)) * float(last_price), 'sell', last_price)
 
-                            print(f"[BUY-Thread]sold {coin} with {(float(last_price) - stored_price) / float(stored_price)*100}% PNL")
+                            print(f"[BUY-Thread]sold {coin} with {(float(last_price) - actual_buyprice) / float(actual_buyprice)*100}% PNL")
 
                             # remove order from json file
                             order_made.pop(coin)
@@ -181,14 +181,16 @@ def main():
                     else:
                         print("[BUY-Thread]placing order")
                         order_made[announcement_coin] = {}
-                        ORDER = place_order(announcement_coin, pairing, qty,'buy', float(price)* 1.1)
-                        order_made[announcement_coin] =order_made[announcement_coin] = {
-                                    'symbol':announcement_coin,
-                                    'price':ORDER.price,
-                                    'volume':ORDER.amount,
-                                    'time':datetime.timestamp(datetime.now()),
+                        base_buyprice = price
+                        ORDER = place_order(announcement_coin, pairing, qty,'buy', float(base_buyprice) * 1.1)
+                        order_made[announcement_coin] = order_made[announcement_coin] = {
+                                    'symbol': announcement_coin,
+                                    'price': base_buyprice,
+                                    'actual_buyprice': base_buyprice,
+                                    'volume': ORDER.amount,
+                                    'time': datetime.timestamp(datetime.now()),
                                     'tp': tp,
-                                    'sl': float(ORDER.price) - (float(ORDER.price) * (float(tsl)/100)),
+                                    'sl': float(base_buyprice) - (float(base_buyprice) * (float(tsl)/100)),
                                     'id': ORDER.id,
                                     'text': ORDER.text,
                                     'create_time': ORDER.create_time,

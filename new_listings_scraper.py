@@ -12,7 +12,7 @@ def get_last_coin():
     """
     latest_announcement = requests.get("https://www.binance.com/bapi/composite/v1/public/cms/article/catalog/list/query?catalogId=48&pageNo=1&pageSize=15")
     latest_announcement = latest_announcement.json()
-    latest_announcement = latest_announcement['data']['articles'][1]['title']
+    latest_announcement = latest_announcement['data']['articles'][0]['title']
 
     # Binance makes several annoucements, irrevelant ones will be ignored
     exclusions = ['Futures', 'Margin', 'adds', 'Adds']
@@ -38,11 +38,11 @@ def store_new_listing(listing):
         else:
             file = listing
             store_order('new_listing.json', file)
-            print("[SCRAPERTHREAD]New listing detected, updating file")
+            print("[SCRAPER-Thread]New listing detected, updating file")
             return file
     else:
         new_listing = store_order('new_listing.json', listing)
-        print("[SCRAPERTHREAD]File does not exist, creating file")
+        print("[SCRAPER-Thread]File does not exist, creating file")
 
         return new_listing
 
@@ -55,6 +55,6 @@ def search_and_update():
         latest_coin = get_last_coin()
         if latest_coin:
             store_new_listing(latest_coin)
-        print("[SCRAPERTHREAD]Checking for coin announcements every 1 minute (in a separate thread)")
+        print("[SCRAPER-Thread]Checking for coin announcements every 1 minute (in a separate thread)")
 
         time.sleep(10)
